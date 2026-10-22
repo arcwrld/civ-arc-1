@@ -1,0 +1,673 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>plumb - seal a file with a hash, verify it later</title>
+<meta name="description" content="plumb: compute the SHA-256 of a file you drop on this page, write the provenance sidecar, and check later whether the file is still the same file. Runs from disk, offline, no network.">
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1a1a1a;
+    --muted: #55595e;
+    --rule: #d8dce0;
+    --card: #f6f7f8;
+    --code-bg: #f0f1f3;
+    --link: #0b4f9e;
+    --ok-bg: #e3f2e1;
+    --ok-fg: #1d4d1b;
+    --bad-bg: #fbe4e4;
+    --bad-fg: #7a1f1f;
+    --warn-bg: #fdf1d8;
+    --warn-fg: #6b4b00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171c;
+      --fg: #e6e8eb;
+      --muted: #a8b0ba;
+      --rule: #2c3138;
+      --card: #1b1f25;
+      --code-bg: #1f242b;
+      --link: #7fb3ff;
+      --ok-bg: #16301a;
+      --ok-fg: #a9dfa5;
+      --bad-bg: #35191b;
+      --bad-fg: #f0a9ab;
+      --warn-bg: #33290f;
+      --warn-fg: #e8c877;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 2rem 1.25rem 4rem;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 46rem; margin: 0 auto; }
+  h1 { font-size: 1.9rem; line-height: 1.2; margin: 0 0 .4rem; letter-spacing: -0.01em; }
+  h2 { font-size: 1.1rem; margin: 2.2rem 0 .6rem; padding-bottom: .3rem; border-bottom: 1px solid var(--rule); }
+  p { margin: 0 0 .8rem; }
+  a { color: var(--link); }
+  .lede { font-size: 1.05rem; color: var(--muted); margin-bottom: 1.4rem; }
+  .meta { color: var(--muted); font-size: .9rem; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .88em; background: var(--code-bg); padding: .1rem .3rem; border-radius: 3px; }
+  pre { background: var(--code-bg); padding: .8rem 1rem; border-radius: 6px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  .zone {
+    border: 2px dashed var(--rule);
+    border-radius: 8px;
+    background: var(--card);
+    padding: 1.1rem 1rem;
+    margin-bottom: .9rem;
+    transition: border-color .1s, background .1s;
+  }
+  .zone.hot { border-color: var(--link); }
+  .zone h3 { margin: 0 0 .3rem; font-size: 1rem; }
+  .zone p { margin: 0 0 .6rem; font-size: .9rem; color: var(--muted); }
+  .row { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; }
+  button {
+    font: inherit;
+    font-size: .92rem;
+    padding: .35rem .8rem;
+    border-radius: 5px;
+    border: 1px solid var(--rule);
+    background: var(--bg);
+    color: var(--fg);
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--muted); }
+  button[disabled] { opacity: .5; cursor: default; }
+  .hash {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .92rem;
+    word-break: break-all;
+    background: var(--code-bg);
+    padding: .5rem .6rem;
+    border-radius: 5px;
+  }
+  .tag {
+    display: inline-block;
+    font-size: .74rem;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    padding: .1rem .45rem;
+    border-radius: 3px;
+    vertical-align: .15em;
+  }
+  .t-ok { background: var(--ok-bg); color: var(--ok-fg); }
+  .t-bad { background: var(--bad-bg); color: var(--bad-fg); }
+  .t-warn { background: var(--warn-bg); color: var(--warn-fg); }
+  ul.plain { list-style: none; padding: 0; margin: 0; }
+  ul.plain li { padding: .25rem 0; border-bottom: 1px solid var(--rule); font-size: .92rem; }
+  ul.plain li:last-child { border-bottom: 0; }
+  table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+  th, td { text-align: left; padding: .3rem .5rem; border-bottom: 1px solid var(--rule); }
+  .box { border-left: 3px solid var(--rule); padding-left: .9rem; }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--rule); color: var(--muted); font-size: .9rem; }
+  .hide { display: none; }
+</style>
+</head>
+<body>
+<main>
+
+  <h1>plumb</h1>
+  <p class="lede">Drop a file on this page and it tells you the file's SHA-256
+  and writes you the sidecar that records that hash, so you can tell later
+  whether the file is still the same file. Nothing leaves your machine: this
+  page has no server, no upload and no network of any kind.</p>
+  <p class="meta">Written by dowel in arc 1. The sidecar format is shared with
+  every other tool in the kit - see <code>kit/CONTRACT.md</code>, section 8.
+  The command line version of the same rules is
+  <code>node tools/plumb/plumb.js --help</code>.</p>
+
+  <h2>1. The file</h2>
+  <div class="zone" id="zone-file">
+    <h3>Drop the file you want to seal or check</h3>
+    <p>A browser will not let a page walk your folders, so this page can only
+    read the files you hand it. That is the limit of the browser face; the
+    command line tool reads a whole tree.</p>
+    <div class="row">
+      <input type="file" id="file-input">
+    </div>
+  </div>
+
+  <h2>2. The sidecar <span class="meta" style="font-weight:normal">(optional)</span></h2>
+  <div class="zone" id="zone-sidecar">
+    <h3>Drop the sidecar to check the file against</h3>
+    <p>A sidecar is a small JSON file named <code>&lt;file&gt;.provenance.json</code>.
+    Give it to this page and the file above is compared against it.</p>
+    <div class="row">
+      <input type="file" id="sidecar-input">
+    </div>
+  </div>
+
+  <h2>Result</h2>
+  <div id="result" class="hide">
+    <p id="verdict"></p>
+    <p class="meta" id="which"></p>
+    <div class="hash" id="hash"></div>
+    <p class="meta" id="how" style="margin-top:.4rem"></p>
+    <h3>The sidecar for this file</h3>
+    <pre><code id="sidecar-text"></code></pre>
+    <div class="row" style="margin-top:.5rem">
+      <button id="save">Save this sidecar</button>
+      <button id="copy">Copy the hash</button>
+    </div>
+    <p class="meta" id="saved" style="margin-top:.5rem"></p>
+    <h3>Claims</h3>
+    <ul class="plain" id="claims"></ul>
+  </div>
+
+  <h2>How to use it on a real file</h2>
+  <p>Drop <code>report.csv</code> on the page, press <b>Save this sidecar</b>,
+  and your browser puts <code>report.csv.provenance.json</code> in your
+  downloads. Put it next to <code>report.csv</code>. Later, drop both files
+  back on the page and it tells you whether the file is the one you sealed.</p>
+  <p class="meta">The command line tool can write the sidecar straight beside
+  the file, which is usually easier:</p>
+  <pre><code>node tools/plumb/plumb.js seal   report.csv --note "from the survey export"
+node tools/plumb/plumb.js verify report.csv</code></pre>
+
+  <h2>Limits</h2>
+  <div class="box">
+    <ul>
+      <li>A hash says a file is unchanged. It does not say the file is good,
+      safe, or the one you meant. A file can be altered and re-sealed, and no
+      checksum can tell you that.</li>
+      <li>The sidecar is not signed. Anyone who can change your files can
+      change the sidecar. It is evidence of change, not proof against a
+      determined editor.</li>
+      <li>This page reads the whole file into memory. It is a tool for
+      documents, not for disk images.</li>
+      <li>The page can only read files you pick, and can only save the
+      sidecar by asking your browser to save it. It cannot write beside your
+      file. The command line tool can.</li>
+      <li>The sidecar format is version <code>kit.provenance/1</code>. Plumb
+      refuses to use a sidecar whose format it does not recognise, rather
+      than guessing at it.</li>
+    </ul>
+  </div>
+
+  <footer>
+    <p>Part of the Kit: small tools that open straight from disk. No server,
+    no install, no network, no dependencies.</p>
+    <p>Check this page works in your own browser by opening it with
+    <code>?selftest=1</code> appended, which runs the published test vectors
+    against both hash implementations and prints the result.</p>
+  </footer>
+
+</main>
+
+<script>
+/* BEGIN engine */
+// The engine. This block is the one part of the page that computes
+// anything; the interface below only moves bytes in and out of it.
+//
+// It is marked so that a test can lift it out of this file and check it
+// against node's own SHA-256. The two copies - this one and the copy in
+// tools/plumb/plumb.js - are checked against each other, so a change in one
+// and not the other is caught before it ships.
+
+const KIT_FORMAT = "kit.provenance/1";
+const TOOL_ID = "plumb/1.0.0";
+
+// FIPS 180-4 constants for SHA-256.
+const SHA_K = [
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
+  0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
+  0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc,
+  0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+  0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
+  0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3,
+  0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5,
+  0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+  0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+];
+
+const SHA_H0 = [
+  0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+  0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+];
+
+function rotr(x, n) {
+  return (x >>> n) | (x << (32 - n));
+}
+
+function toHex(bytes) {
+  let s = "";
+  for (let i = 0; i < bytes.length; i++) {
+    s += (bytes[i] < 16 ? "0" : "") + bytes[i].toString(16);
+  }
+  return s;
+}
+
+// A SHA-256 in plain JavaScript, for browsers where the WebCrypto API is
+// missing or locked down. It is the same algorithm node's crypto module
+// implements; the published test vectors below prove it.
+function sha256Sync(bytes) {
+  const H = SHA_H0.slice();
+  const len = bytes.length;
+  const total = Math.ceil((len + 9) / 64) * 64;
+  const msg = new Uint8Array(total);
+  msg.set(bytes);
+  msg[len] = 0x80;
+
+  // The message length in bits, as a 64 bit big-endian number.
+  const hi = Math.floor(len / 536870912);
+  const lo = (len % 536870912) * 8;
+  msg[total - 8] = (hi >>> 24) & 0xff;
+  msg[total - 7] = (hi >>> 16) & 0xff;
+  msg[total - 6] = (hi >>> 8) & 0xff;
+  msg[total - 5] = hi & 0xff;
+  msg[total - 4] = (lo >>> 24) & 0xff;
+  msg[total - 3] = (lo >>> 16) & 0xff;
+  msg[total - 2] = (lo >>> 8) & 0xff;
+  msg[total - 1] = lo & 0xff;
+
+  const w = new Uint32Array(64);
+  for (let off = 0; off < total; off += 64) {
+    for (let i = 0; i < 16; i++) {
+      const j = off + i * 4;
+      w[i] = (msg[j] << 24) | (msg[j + 1] << 16) | (msg[j + 2] << 8) | msg[j + 3];
+    }
+    for (let i = 16; i < 64; i++) {
+      const x = w[i - 15];
+      const y = w[i - 2];
+      const s0 = rotr(x, 7) ^ rotr(x, 18) ^ (x >>> 3);
+      const s1 = rotr(y, 17) ^ rotr(y, 19) ^ (y >>> 10);
+      w[i] = (w[i - 16] + s0 + w[i - 7] + s1) | 0;
+    }
+    let a = H[0], b = H[1], c = H[2], d = H[3];
+    let e = H[4], f = H[5], g = H[6], h = H[7];
+    for (let i = 0; i < 64; i++) {
+      const S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+      const ch = (e & f) ^ (~e & g);
+      const t1 = (h + S1 + ch + SHA_K[i] + w[i]) | 0;
+      const S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+      const maj = (a & b) ^ (a & c) ^ (b & c);
+      const t2 = (S0 + maj) | 0;
+      h = g; g = f; f = e; e = (d + t1) | 0;
+      d = c; c = b; b = a; a = (t1 + t2) | 0;
+    }
+    H[0] = (H[0] + a) | 0;
+    H[1] = (H[1] + b) | 0;
+    H[2] = (H[2] + c) | 0;
+    H[3] = (H[3] + d) | 0;
+    H[4] = (H[4] + e) | 0;
+    H[5] = (H[5] + f) | 0;
+    H[6] = (H[6] + g) | 0;
+    H[7] = (H[7] + h) | 0;
+  }
+
+  let out = "";
+  for (let i = 0; i < 8; i++) {
+    const v = H[i] >>> 0;
+    out += ("0000000" + v.toString(16)).slice(-8);
+  }
+  return out;
+}
+
+// The WebCrypto path. It works from file:// in current browsers, and is
+// much faster, but it is not everywhere - so the plain JavaScript one
+// stands behind it.
+async function sha256Subtle(bytes) {
+  const view = bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength
+  );
+  const digest = await window.crypto.subtle.digest("SHA-256", view);
+  return toHex(new Uint8Array(digest));
+}
+
+// Hash a byte array, preferring the fast path and falling back.
+async function hashBytes(bytes) {
+  if (window.crypto && window.crypto.subtle && window.crypto.subtle.digest) {
+    try {
+      return { hex: await sha256Subtle(bytes), how: "WebCrypto" };
+    } catch (e) {
+      // Fall through to the built-in implementation below.
+    }
+  }
+  return { hex: sha256Sync(bytes), how: "built-in JavaScript" };
+}
+
+// The published test vectors, from FIPS 180-4 and the well known
+// examples. The self test runs every one of them.
+const SELFTEST_VECTORS = [
+  {
+    name: "the empty string",
+    text: "",
+    hex: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    name: "abc",
+    text: "abc",
+    hex: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+  },
+  {
+    name: "the quick brown fox",
+    text: "The quick brown fox jumps over the lazy dog",
+    hex: "d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592"
+  },
+  {
+    name: "two blocks",
+    text: "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq",
+    hex: "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
+  },
+  {
+    name: "a million a's",
+    text: null,
+    repeat: 1000000,
+    hex: "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0"
+  }
+];
+
+function vectorBytes(v) {
+  if (v.repeat) {
+    const b = new Uint8Array(v.repeat);
+    b.fill(97);
+    return b;
+  }
+  return new TextEncoder().encode(v.text);
+}
+
+/* END engine */
+
+/* BEGIN interface */
+(function () {
+  "use strict";
+
+  const $ = (id) => document.getElementById(id);
+  const state = { file: null, hex: null, size: 0, name: "", sidecar: null };
+
+  function readBytes(file) {
+    if (file.arrayBuffer) return file.arrayBuffer();
+    return new Promise(function (resolve, reject) {
+      const r = new FileReader();
+      r.onload = function () { resolve(r.result); };
+      r.onerror = function () { reject(r.error); };
+      r.readAsArrayBuffer(file);
+    });
+  }
+
+  function escapeText(s) {
+    return String(s).replace(/[&<>]/g, function (c) {
+      if (c === "&") return "&amp;";
+      if (c === "<") return "&lt;";
+      return "&gt;";
+    });
+  }
+
+  function wireDrop(zoneId, inputId, onFile) {
+    const zone = $(zoneId);
+    const input = $(inputId);
+    zone.addEventListener("dragover", function (e) {
+      e.preventDefault();
+      zone.classList.add("hot");
+    });
+    zone.addEventListener("dragleave", function () {
+      zone.classList.remove("hot");
+    });
+    zone.addEventListener("drop", function (e) {
+      e.preventDefault();
+      zone.classList.remove("hot");
+      const files = e.dataTransfer && e.dataTransfer.files;
+      if (files && files.length) onFile(files[0]);
+    });
+    input.addEventListener("change", function () {
+      if (input.files && input.files.length) onFile(input.files[0]);
+    });
+  }
+
+  function nowStamp() {
+    return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  }
+
+  function buildSidecar() {
+    return {
+      format: KIT_FORMAT,
+      file: {
+        name: state.name,
+        size: state.size,
+        sha256: state.hex
+      },
+      claims: [
+        {
+          tool: TOOL_ID,
+          at: nowStamp(),
+          kind: "seal",
+          data: { note: "", source: "" }
+        }
+      ]
+    };
+  }
+
+  function renderClaims(claims) {
+    const ul = $("claims");
+    ul.innerHTML = "";
+    if (!claims || !claims.length) {
+      const li = document.createElement("li");
+      li.className = "meta";
+      li.textContent = "no claims recorded";
+      ul.appendChild(li);
+      return;
+    }
+    claims.forEach(function (c) {
+      const li = document.createElement("li");
+      const when = c.at || "(no time)";
+      const who = c.tool || "(no maker)";
+      const kind = c.kind || "";
+      let extra = "";
+      if (c.data && c.data.note) extra = "  \"" + c.data.note + "\"";
+      li.textContent = when + "  " + who + "  " + kind + extra;
+      ul.appendChild(li);
+    });
+  }
+
+  function showResult() {
+    $("result").classList.remove("hide");
+  }
+
+  function compareWithSidecar() {
+    const verdict = $("verdict");
+    const sc = state.sidecar;
+    if (!sc) {
+      verdict.innerHTML = '<span class="tag t-warn">no sidecar</span> ' +
+        "This is the hash of the file. Drop a sidecar below to check it.";
+      $("which").textContent = "";
+      renderClaims([]);
+      return;
+    }
+    if (sc.error) {
+      verdict.innerHTML = '<span class="tag t-bad">unreadable sidecar</span> ' +
+        escapeText(sc.error);
+      $("which").textContent = "";
+      renderClaims([]);
+      return;
+    }
+    const obj = sc.obj;
+    if (!obj || obj.format !== KIT_FORMAT) {
+      verdict.innerHTML = '<span class="tag t-bad">unknown format</span> ' +
+        "The sidecar has format \"" +
+        escapeText(obj && obj.format ? obj.format : "(none)") +
+        "\", which this tool does not recognise. It is not trusted and it is not used.";
+      $("which").textContent = "";
+      renderClaims([]);
+      return;
+    }
+    const expected = obj.file && obj.file.sha256;
+    if (!expected) {
+      verdict.innerHTML = '<span class="tag t-bad">no hash in sidecar</span> ' +
+        "The sidecar does not record a SHA-256 for the file, so there is nothing to check against.";
+      $("which").textContent = "";
+      renderClaims([]);
+      return;
+    }
+    if (expected === state.hex) {
+      verdict.innerHTML = '<span class="tag t-ok">match</span> ' +
+        "The file is the file you sealed.";
+    } else {
+      verdict.innerHTML = '<span class="tag t-bad">mismatch</span> ' +
+        "The file has changed since it was sealed.";
+    }
+    $("which").textContent = "sidecar expects  " + expected;
+    renderClaims(obj.claims);
+  }
+
+  function redraw() {
+    $("hash").textContent = state.hex || "(nothing hashed yet)";
+    $("how").textContent = state.how
+      ? "computed by the " + state.how + " implementation"
+      : "";
+    $("sidecar-text").textContent = state.hex
+      ? JSON.stringify(buildSidecar(), null, 2) + "\n"
+      : "";
+    compareWithSidecar();
+  }
+
+  function handleFile(file) {
+    if (file.size > 536870912) {
+      $("result").classList.remove("hide");
+      $("verdict").innerHTML = '<span class="tag t-bad">too big</span> ' +
+        "This page hashes files in memory. " + file.name +
+        " is larger than 512 MB, which is more than this tool is for. " +
+        "Use the command line tool, which streams it.";
+      $("hash").textContent = "";
+      $("how").textContent = "";
+      $("sidecar-text").textContent = "";
+      $("claims").innerHTML = "";
+      return;
+    }
+    readBytes(file).then(function (buf) {
+      const bytes = new Uint8Array(buf);
+      state.file = file;
+      state.name = file.name;
+      state.size = file.size;
+      return hashBytes(bytes).then(function (r) {
+        state.hex = r.hex;
+        state.how = r.how;
+        showResult();
+        redraw();
+      });
+    }).catch(function (e) {
+      showResult();
+      $("verdict").innerHTML = '<span class="tag t-bad">cannot read</span> ' +
+        escapeText(e && e.message ? e.message : String(e));
+    });
+  }
+
+  function handleSidecar(file) {
+    readBytes(file).then(function (buf) {
+      const text = new TextDecoder().decode(new Uint8Array(buf));
+      try {
+        state.sidecar = { obj: JSON.parse(text), error: null };
+      } catch (e) {
+        state.sidecar = { obj: null, error: "the sidecar is not valid JSON: " + e.message };
+      }
+      redraw();
+    });
+  }
+
+  wireDrop("zone-file", "file-input", handleFile);
+  wireDrop("zone-sidecar", "sidecar-input", handleSidecar);
+
+  $("save").addEventListener("click", function () {
+    if (!state.hex) return;
+    const name = state.name + ".provenance.json";
+    const text = JSON.stringify(buildSidecar(), null, 2) + "\n";
+    const blob = new Blob([text], { type: "application/json" });
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = href;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(href); }, 5000);
+    $("saved").textContent = "Your browser was asked to save " + name +
+      ". Put it next to " + state.name + ".";
+  });
+
+  $("copy").addEventListener("click", function () {
+    if (!state.hex) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(state.hex).then(function () {
+        $("saved").textContent = "The hash is on the clipboard.";
+      }, function () {
+        $("saved").textContent = "The hash is " + state.hex;
+      });
+    } else {
+      $("saved").textContent = "The hash is " + state.hex;
+    }
+  });
+
+  // The self test. Open this page with ?selftest=1 to run the published
+  // test vectors against both implementations.
+  function runSelfTest() {
+    const rows = [];
+    let allOk = true;
+    const results = SELFTEST_VECTORS.map(function (v) {
+      const bytes = vectorBytes(v);
+      const builtin = sha256Sync(bytes);
+      return { name: v.name, expected: v.hex, builtin: builtin, bytes: bytes };
+    });
+
+    return results.reduce(function (chain, r) {
+      return chain.then(function () {
+        if (r.builtin !== r.expected) allOk = false;
+        return hashBytes(r.bytes).then(function (h) {
+          if (h.hex !== r.expected) allOk = false;
+          rows.push({
+            name: r.name,
+            expected: r.expected,
+            builtin: r.builtin,
+            used: h.hex,
+            how: h.how,
+            ok: r.builtin === r.expected && h.hex === r.expected
+          });
+        });
+      });
+    }, Promise.resolve()).then(function () {
+      return { rows: rows, allOk: allOk };
+    });
+  }
+
+  if (/[?&]selftest=1/.test(window.location.search)) {
+    document.title = "plumb - self test";
+    runSelfTest().then(function (out) {
+      const lines = [];
+      lines.push("plumb self test - SHA-256");
+      lines.push("");
+      out.rows.forEach(function (r) {
+        lines.push((r.ok ? "PASS" : "FAIL") + "  " + r.name);
+        lines.push("  expected  " + r.expected);
+        lines.push("  built-in  " + r.builtin);
+        lines.push("  used      " + r.used + "  (" + r.how + ")");
+        lines.push("");
+      });
+      lines.push(out.allOk
+        ? "All vectors passed. Both implementations agree with the published values."
+        : "A vector FAILED. This build is not fit to use.");
+      const pre = document.createElement("pre");
+      pre.textContent = lines.join("\n");
+      document.body.insertBefore(pre, document.body.firstChild);
+    });
+  } else {
+    showResult();
+    redraw();
+  }
+})();
+/* END interface */
+</script>
+</body>
+</html>
