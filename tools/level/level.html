@@ -1,0 +1,1117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>level - check the shape of a text file</title>
+<meta name="description" content="level: check the shape of a text file - line endings, byte order mark, invalid UTF-8, final newline, trailing whitespace, tab indentation. Runs from disk, offline, no network.">
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1a1a1a;
+    --muted: #55595e;
+    --rule: #d8dce0;
+    --card: #f6f7f8;
+    --code-bg: #f0f1f3;
+    --link: #0b4f9e;
+    --ok-bg: #e3f2e1;
+    --ok-fg: #1d4d1b;
+    --bad-bg: #fbe4e4;
+    --bad-fg: #7a1f1f;
+    --warn-bg: #fdf1d8;
+    --warn-fg: #6b4b00;
+    --del-bg: #fdecec;
+    --del-fg: #7a1f1f;
+    --add-bg: #eaf6ea;
+    --add-fg: #1d4d1b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171c;
+      --fg: #e6e8eb;
+      --muted: #a8b0ba;
+      --rule: #2c3138;
+      --card: #1b1f25;
+      --code-bg: #1f242b;
+      --link: #7fb3ff;
+      --ok-bg: #16301a;
+      --ok-fg: #a9dfa5;
+      --bad-bg: #35191b;
+      --bad-fg: #f0a9ab;
+      --warn-bg: #33290f;
+      --warn-fg: #e8c877;
+      --del-bg: #3a1c1d;
+      --del-fg: #f0a9ab;
+      --add-bg: #16301a;
+      --add-fg: #a9dfa5;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 2rem 1.25rem 4rem;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 50rem; margin: 0 auto; }
+  h1 { font-size: 1.9rem; line-height: 1.2; margin: 0 0 .4rem; letter-spacing: -0.01em; }
+  h2 { font-size: 1.1rem; margin: 2.2rem 0 .6rem; padding-bottom: .3rem; border-bottom: 1px solid var(--rule); }
+  h3 { font-size: 1rem; margin: 0 0 .35rem; }
+  p { margin: 0 0 .8rem; }
+  a { color: var(--link); }
+  .lede { font-size: 1.05rem; color: var(--muted); margin-bottom: 1.4rem; }
+  .meta { color: var(--muted); font-size: .9rem; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .88em; background: var(--code-bg); padding: .1rem .3rem; border-radius: 3px; }
+  pre { background: var(--code-bg); padding: .8rem 1rem; border-radius: 6px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  .zone {
+    border: 2px dashed var(--rule);
+    border-radius: 8px;
+    background: var(--card);
+    padding: 1.1rem 1rem;
+    margin-bottom: .9rem;
+    transition: border-color .1s, background .1s;
+  }
+  .zone.hot { border-color: var(--link); }
+  .zone p { margin: 0 0 .6rem; font-size: .9rem; color: var(--muted); }
+  .row { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; }
+  button {
+    font: inherit;
+    font-size: .92rem;
+    padding: .35rem .8rem;
+    border-radius: 5px;
+    border: 1px solid var(--rule);
+    background: var(--bg);
+    color: var(--fg);
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--muted); }
+  button[disabled] { opacity: .5; cursor: default; }
+  textarea {
+    width: 100%;
+    min-height: 7rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .9rem;
+    padding: .6rem;
+    border-radius: 5px;
+    border: 1px solid var(--rule);
+    background: var(--bg);
+    color: var(--fg);
+  }
+  .tag {
+    display: inline-block;
+    font-size: .74rem;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    padding: .1rem .45rem;
+    border-radius: 3px;
+    vertical-align: .15em;
+  }
+  .t-ok { background: var(--ok-bg); color: var(--ok-fg); }
+  .t-bad { background: var(--bad-bg); color: var(--bad-fg); }
+  .t-warn { background: var(--warn-bg); color: var(--warn-fg); }
+  ul.plain { list-style: none; padding: 0; margin: 0; }
+  ul.plain li { padding: .3rem 0; border-bottom: 1px solid var(--rule); font-size: .92rem; }
+  ul.plain li:last-child { border-bottom: 0; }
+  .finding { display: flex; gap: .6rem; align-items: baseline; }
+  .finding .where {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .85rem;
+    color: var(--muted);
+    min-width: 3.5rem;
+    text-align: right;
+    flex: none;
+  }
+  .finding .what { font-weight: 600; }
+  .finding .why { color: var(--muted); }
+  table.diff { border-collapse: collapse; width: 100%; font-size: .88em; }
+  table.diff td { padding: .15rem .4rem; vertical-align: top; }
+  table.diff td.n {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: var(--muted);
+    text-align: right;
+    width: 3rem;
+    user-select: none;
+  }
+  table.diff td.mark { width: 1.4rem; text-align: center; user-select: none; }
+  table.diff tr.del td.text { background: var(--del-bg); color: var(--del-fg); }
+  table.diff tr.add td.text { background: var(--add-bg); color: var(--add-fg); }
+  table.diff td.text {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+    width: 100%;
+  }
+  .ws { color: var(--muted); opacity: .8; }
+  .box { border-left: 3px solid var(--rule); padding-left: .9rem; }
+  .hide { display: none; }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--rule); color: var(--muted); font-size: .9rem; }
+  ol.limits { margin: 0 0 .8rem; padding-left: 1.2rem; }
+  ol.limits li { margin: .35rem 0; }
+</style>
+</head>
+<body>
+<main>
+
+  <h1>level</h1>
+  <p class="lede">Drop a text file on this page and it tells you the shape of
+  the file: whether it uses Windows line endings, whether it carries an
+  invisible byte order mark, whether it is really UTF-8, whether it ends with
+  a newline, and whether it has trailing spaces or tab indentation. It then
+  shows you the levelled copy, line by line, and you decide whether to keep
+  it.</p>
+  <p class="meta">Written by plane in arc 1. Nothing leaves your machine:
+  this page has no server, no upload and no network of any kind. Your file is
+  never changed unless you ask for the levelled copy and save it yourself.
+  The command line version of the same rules is
+  <code>node tools/level/level.js --help</code>.</p>
+
+  <h2>1. The file</h2>
+  <div class="zone" id="zone-file">
+    <h3>Drop a file here, or choose one</h3>
+    <p>A browser will not let a page walk your folders, so this page can only
+    read the files you hand it. The command line tool reads a whole tree.</p>
+    <div class="row">
+      <input type="file" id="file-input">
+    </div>
+  </div>
+
+  <h2>2. Or paste some text</h2>
+  <div class="zone" id="zone-text">
+    <h3>Text you paste is checked as UTF-8</h3>
+    <p>Useful for trying the tool out. Pasted text cannot have a byte order
+    mark or invalid bytes, because the browser has already decoded it.</p>
+    <textarea id="text-input" placeholder="paste some text here"></textarea>
+    <div class="row" style="margin-top:.6rem">
+      <button id="check-text">Check this text</button>
+    </div>
+  </div>
+
+  <h2>Result</h2>
+  <div id="result" class="hide">
+    <p id="verdict"></p>
+    <p class="meta" id="which"></p>
+
+    <h3>What is wrong</h3>
+    <ul class="plain" id="findings"></ul>
+
+    <h3 id="diff-heading">The levelled copy</h3>
+    <p class="meta" id="diff-note"></p>
+    <table class="diff" id="diff"></table>
+
+    <div class="row" style="margin-top:.9rem">
+      <button id="save">Save the levelled copy</button>
+      <button id="copy">Copy the levelled text</button>
+    </div>
+    <p class="meta" id="saved" style="margin-top:.5rem"></p>
+  </div>
+
+  <h2>What level checks</h2>
+  <table class="diff">
+    <tr><td class="text" style="width:9rem"><b>crlf</b></td><td class="text">the file uses CRLF (Windows) or bare CR (classic Mac) line endings</td></tr>
+    <tr><td class="text"><b>bom</b></td><td class="text">the file starts with a UTF-8 byte order mark</td></tr>
+    <tr><td class="text"><b>encoding</b></td><td class="text">the file is not valid UTF-8</td></tr>
+    <tr><td class="text"><b>final-newline</b></td><td class="text">the file does not end with a newline</td></tr>
+    <tr><td class="text"><b>trailing-space</b></td><td class="text">a line ends in spaces or tabs</td></tr>
+    <tr><td class="text"><b>tabs</b></td><td class="text">a line is indented with a tab character</td></tr>
+  </table>
+  <p class="meta" style="margin-top:.6rem">Every one of these can be settled
+  by looking at bytes. None of them is an opinion about what the file should
+  contain. Level has no opinion about line length, quote style, naming,
+  indentation width, or anything else that is a matter of taste.</p>
+
+  <h2>How to use it on a real file</h2>
+  <p>Drop <code>notes.txt</code> on the page and it shows you what is wrong
+  with the shape of the file and what the levelled copy would be. Press
+  <b>Save the levelled copy</b> and your browser puts a new file in your
+  downloads. Compare the two, and if you are happy, replace the original
+  yourself. Level never edits the file you gave it.</p>
+  <p class="meta">On the command line the same rules can fix the file for
+  you, if you ask:</p>
+  <pre><code>node tools/level/level.js check notes.txt
+node tools/level/level.js fix   notes.txt --write</code></pre>
+
+  <h2>Limits</h2>
+  <div class="box">
+    <ol class="limits">
+      <li>Level checks the shape of a text file. It does not check what the
+      text says, and it does not know what the file is for.</li>
+      <li>A file that is not valid UTF-8 is reported and left alone. Level
+      will not guess what the bytes were meant to be.</li>
+      <li>Tabs are expanded to the next tab stop, four columns wide. If your
+      project uses a different width, the indentation will not match its
+      style, though the tabs will be gone.</li>
+      <li>Level does not look inside a file it is given. It does not follow
+      includes, does not read a project file, and does not care which
+      language the file is in.</li>
+      <li>The browser page reads the whole file into memory. It is a tool
+      for documents, not for disk images.</li>
+      <li>The page can only read files you pick, and can only save the
+      levelled copy by asking your browser to save it. It cannot write
+      beside your file. The command line tool can, if you ask it to.</li>
+    </ol>
+  </div>
+
+  <footer>
+    <p>This file is <code>tools/level/level.html</code>. It is one file: open
+    it from the disk and it works, with nothing else installed.</p>
+    <p>Part of the Kit: small tools that open straight from disk. No server,
+    no install, no network, no dependencies.</p>
+    <p>Check this page works in your own browser by opening it with
+    <code>?selftest=1</code> appended, which runs the published test vectors
+    against the engine in this page and prints the result.</p>
+  </footer>
+
+</main>
+
+<script>
+/* BEGIN engine (from tools/level/level.js) */
+'use strict';
+// level - the engine.
+//
+// Checks the shape of a text file, and produces the levelled copy.
+//
+// The rules are objective, not stylistic. Every one of them can be
+// settled by looking at bytes, and none of them is an opinion about
+// what the file should contain:
+//
+//   crlf           the file uses CRLF (Windows) or bare CR (classic Mac)
+//                 line endings
+//   bom            the file starts with a UTF-8 byte order mark
+//   encoding       the file is not valid UTF-8
+//   final-newline  the file does not end with a newline
+//   trailing-space a line ends in spaces or tabs
+//   tabs           a line is indented with a tab character
+//
+// The engine takes bytes in and returns plain data out. It has no
+// filesystem, no DOM, no clock and no randomness, so the command line
+// and the browser page can both call it and cannot disagree about what
+// "levelled" means.
+//
+// The page carries a copy of this file inline, between two marker
+// comments. A test lifts that copy out of the page and compares it
+// with this file, byte for byte, so the two cannot drift apart
+// silently.
+//
+// Zero dependencies: nothing here but plain JavaScript.
+
+const LEVEL_VERSION = '1.0.0';
+const LEVEL_ID = 'level/' + LEVEL_VERSION;
+
+// The width of a tab stop, in columns, used when a tab in an indent is
+// expanded. Four is the width most editors use by default now.
+const TAB_WIDTH = 4;
+
+// The rules, in the order they are reported. A rule is
+// { id, title, detail, fixable }.
+const RULES = [
+  {
+    id: 'crlf',
+    title: 'CRLF line endings',
+    detail:
+      'The file uses Windows line endings (CR LF), or a bare CR. Use LF ' +
+      'instead: one byte per line ending, and the same file on every ' +
+      'platform.',
+    fixable: true,
+  },
+  {
+    id: 'bom',
+    title: 'UTF-8 byte order mark',
+    detail:
+      'The file starts with a UTF-8 byte order mark. Remove it: it is ' +
+      'invisible, it is not part of the text, and it breaks tools that ' +
+      'compare the first line.',
+    fixable: true,
+  },
+  {
+    id: 'encoding',
+    title: 'not valid UTF-8',
+    detail:
+      'The file contains bytes that are not valid UTF-8. Level cannot fix ' +
+      'this one, because guessing what the bytes were meant to be is a ' +
+      'guess. Convert the file deliberately and check it again.',
+    fixable: false,
+  },
+  {
+    id: 'final-newline',
+    title: 'no final newline',
+    detail:
+      'The file does not end with a newline. Add one, so that the last ' +
+      'line is a line like any other and concatenation behaves.',
+    fixable: true,
+  },
+  {
+    id: 'trailing-space',
+    title: 'trailing whitespace',
+    detail:
+      'A line ends in spaces or tabs. Strip them: they are invisible in ' +
+      'most editors and they show up in diffs as changed lines.',
+    fixable: true,
+  },
+  {
+    id: 'tabs',
+    title: 'tab indentation',
+    detail:
+      'A line is indented with a tab character. Replace the leading tabs ' +
+      'with spaces: the width of a tab depends on the editor, and the ' +
+      'width of a space does not.',
+    fixable: true,
+  },
+];
+
+const RULE_IDS = RULES.map((r) => r.id);
+
+// ---------------------------------------------------------------- helpers
+
+// Is this byte a UTF-8 continuation byte (10xxxxxx)?
+function isContinuation(b) {
+  return (b & 0xc0) === 0x80;
+}
+
+// Decode bytes as UTF-8, strictly. Returns { ok, text, reason }.
+//
+// Strict means overlong forms, lone surrogates and out-of-range code
+// points are all rejected: a file that claims to be UTF-8 and is not
+// is exactly the rot this tool exists to find.
+function decodeUtf8(bytes) {
+  let out = '';
+  let i = 0;
+  const n = bytes.length;
+  while (i < n) {
+    const b = bytes[i];
+    if (b < 0x80) {
+      out += String.fromCharCode(b);
+      i++;
+      continue;
+    }
+    let need = 0;
+    let cp = 0;
+    let min = 0;
+    if (b >= 0xc2 && b <= 0xdf) {
+      need = 1; cp = b & 0x1f; min = 0x80;
+    } else if (b >= 0xe0 && b <= 0xef) {
+      need = 2; cp = b & 0x0f; min = 0x800;
+    } else if (b >= 0xf0 && b <= 0xf4) {
+      need = 3; cp = b & 0x07; min = 0x10000;
+    } else {
+      return {
+        ok: false,
+        text: '',
+        reason:
+          'invalid UTF-8: unexpected byte 0x' + b.toString(16).padStart(2, '0') +
+          ' at offset ' + i,
+      };
+    }
+    // The last byte of the sequence must exist, so the sequence is
+    // truncated when i + need is not less than n.
+    if (i + need >= n) {
+      return {
+        ok: false,
+        text: '',
+        reason: 'invalid UTF-8: truncated sequence at offset ' + i,
+      };
+    }
+    for (let k = 1; k <= need; k++) {
+      const c = bytes[i + k];
+      if (!isContinuation(c)) {
+        return {
+          ok: false,
+          text: '',
+          reason:
+            'invalid UTF-8: bad continuation byte at offset ' + (i + k),
+        };
+      }
+      cp = (cp << 6) | (c & 0x3f);
+    }
+    if (cp < min) {
+      return {
+        ok: false,
+        text: '',
+        reason: 'invalid UTF-8: overlong sequence at offset ' + i,
+      };
+    }
+    if (cp >= 0xd800 && cp <= 0xdfff) {
+      return {
+        ok: false,
+        text: '',
+        reason: 'invalid UTF-8: lone surrogate at offset ' + i,
+      };
+    }
+    if (cp > 0x10ffff) {
+      return {
+        ok: false,
+        text: '',
+        reason: 'invalid UTF-8: code point out of range at offset ' + i,
+      };
+    }
+    out += String.fromCodePoint(cp);
+    i += need + 1;
+  }
+  return { ok: true, text: out, reason: null };
+}
+
+// The bytes of a string, as UTF-8. Written out rather than using
+// TextEncoder, so the engine depends on no host API that might be
+// missing in some browser.
+//
+// A lone surrogate in the string has no UTF-8 encoding, so it becomes
+// U+FFFD, the replacement character. That is what a decoder is
+// expected to produce for it, and it keeps this function total.
+function encodeUtf8(str) {
+  const out = [];
+  for (let i = 0; i < str.length; i++) {
+    let cp = str.codePointAt(i);
+    if (cp > 0xffff) i++; // the low surrogate is consumed
+    if (cp >= 0xd800 && cp <= 0xdfff) cp = 0xfffd;
+    if (cp < 0x80) {
+      out.push(cp);
+    } else if (cp < 0x800) {
+      out.push(0xc0 | (cp >> 6), 0x80 | (cp & 0x3f));
+    } else if (cp < 0x10000) {
+      out.push(0xe0 | (cp >> 12), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
+    } else {
+      out.push(
+        0xf0 | (cp >> 18),
+        0x80 | ((cp >> 12) & 0x3f),
+        0x80 | ((cp >> 6) & 0x3f),
+        0x80 | (cp & 0x3f)
+      );
+    }
+  }
+  return Uint8Array.from(out);
+}
+
+// Split text into lines, keeping the exact terminator that followed
+// each one. A line is { text, ending }.
+//
+// All three terminators are understood - LF, CRLF and a bare CR - so a
+// classic Mac file is counted the same way as a Unix one, and a line
+// number means the same thing in every file.
+//
+// The last entry is the marker after the final newline. Its text is
+// empty and its ending is empty. It is not a line of the file.
+function splitLines(text) {
+  const lines = [];
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '\n') {
+      lines.push({ text: text.slice(start, i), ending: '\n' });
+      start = i + 1;
+    } else if (c === '\r') {
+      // A CRLF terminator is two bytes, but the line's text stops
+      // before the CR. The end is remembered before the LF is
+      // consumed, or the carriage return would end up inside the
+      // line and be read as trailing whitespace.
+      const end = i;
+      let ending = '\r';
+      if (text[i + 1] === '\n') {
+        ending = '\r\n';
+        i++;
+      }
+      lines.push({ text: text.slice(start, end), ending: ending });
+      start = i + 1;
+    }
+  }
+  lines.push({ text: text.slice(start), ending: '' });
+  return lines;
+}
+
+// The lines of a text, as plain strings, with the terminators
+// removed. A trailing newline does not make an extra line.
+function realLines(text) {
+  const lines = splitLines(text);
+  const last = lines[lines.length - 1];
+  if (lines.length > 0 && last.text === '' && last.ending === '') {
+    lines.pop();
+  }
+  return lines.map((l) => l.text);
+}
+
+// The leading whitespace of a line, and the rest of it.
+function splitIndent(line) {
+  const m = /^[ \t]*/.exec(line);
+  const indent = m[0];
+  return { indent, rest: line.slice(indent.length) };
+}
+
+// Expand the tabs in an indent to spaces, stopping at the next tab
+// stop. This is what a tab character means to an editor, so it is the
+// honest expansion rather than a guess.
+function expandIndent(indent) {
+  let col = 0;
+  let out = '';
+  for (let i = 0; i < indent.length; i++) {
+    const ch = indent[i];
+    if (ch === '\t') {
+      const width = TAB_WIDTH - (col % TAB_WIDTH);
+      out += ' '.repeat(width);
+      col += width;
+    } else {
+      out += ch;
+      col += 1;
+    }
+  }
+  return out;
+}
+
+// The first line number that uses CRLF.
+function firstLineWithCrlf(text) {
+  const lines = splitLines(text);
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].ending === '\r\n') return i + 1;
+  }
+  return 1;
+}
+
+// The first line number that uses a bare CR.
+function firstLineWithBareCr(text) {
+  const lines = splitLines(text);
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].ending === '\r') return i + 1;
+  }
+  return 1;
+}
+
+function sameBytes(a, b) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+// ----------------------------------------------------------------- check
+
+// check(bytes) -> the findings, and the levelled copy.
+//
+// This is the whole of the tool. The command line and the browser page
+// both call this, so they cannot disagree about what level means.
+function check(bytes) {
+  const buf = bytes instanceof Uint8Array ? bytes : Uint8Array.from(bytes);
+
+  const findings = [];
+  const notes = [];
+
+  // --- the byte order mark
+  let body = buf;
+  const hasBom =
+    buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf;
+  if (hasBom) {
+    findings.push({
+      rule: 'bom',
+      line: 1,
+      detail: 'the file starts with a UTF-8 byte order mark',
+    });
+    body = buf.subarray(3);
+  }
+
+  // --- the encoding
+  const decoded = decodeUtf8(body);
+  if (!decoded.ok) {
+    findings.push({
+      rule: 'encoding',
+      line: null,
+      detail: decoded.reason,
+    });
+    // The rest of the rules need text. With bytes that are not text
+    // there is no honest answer about line endings or indentation, so
+    // the other rules are not run and the file is not levelled.
+    return {
+      ok: false,
+      findings: findings,
+      notes: notes,
+      levelled: null,
+      changed: false,
+      text: null,
+      diff: null,
+      size: buf.length,
+      levelledSize: null,
+      hadBom: hasBom,
+      hadFinalNewline: null,
+    };
+  }
+
+  const text = decoded.text;
+  notes.push(
+    'decoded as UTF-8' + (hasBom ? ' after removing the byte order mark' : '')
+  );
+
+  // --- the line endings
+  const lines = splitLines(text);
+  let crlfLine = 0;
+  let crLine = 0;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].ending === '\r\n' && crlfLine === 0) crlfLine = i + 1;
+    if (lines[i].ending === '\r' && crLine === 0) crLine = i + 1;
+  }
+  if (crlfLine !== 0) {
+    findings.push({
+      rule: 'crlf',
+      line: crlfLine,
+      detail: 'the file uses CRLF (Windows) line endings',
+    });
+  }
+  if (crLine !== 0) {
+    findings.push({
+      rule: 'crlf',
+      line: crLine,
+      detail: 'the file uses a bare CR (classic Mac) line ending',
+    });
+  }
+
+  // The marker after the final newline is not a line of the file.
+  const last = lines[lines.length - 1];
+  const hasMarker = lines.length > 0 && last.text === '' && last.ending === '';
+
+  // --- the final newline
+  const endsWithNewline =
+    text.length > 0 && (text.endsWith('\n') || text.endsWith('\r'));
+  if (text.length > 0 && !endsWithNewline) {
+    findings.push({
+      rule: 'final-newline',
+      line: realLines(text).length,
+      detail: 'the file does not end with a newline',
+    });
+  }
+
+  // --- trailing whitespace and tab indentation, line by line
+  for (let i = 0; i < lines.length; i++) {
+    if (hasMarker && i === lines.length - 1) continue;
+    const line = lines[i].text;
+    const trimmed = line.replace(/[ \t]+$/, '');
+    if (trimmed !== line) {
+      const tail = line.slice(trimmed.length);
+      const word = tail === '\t' ? 'tab' : 'space';
+      findings.push({
+        rule: 'trailing-space',
+        line: i + 1,
+        detail:
+          'line ' + (i + 1) + ' ends in ' + tail.length + ' trailing ' +
+          word + (tail.length === 1 ? '' : 's'),
+      });
+    }
+    const indent = splitIndent(line).indent;
+    if (indent.indexOf('\t') !== -1) {
+      findings.push({
+        rule: 'tabs',
+        line: i + 1,
+        detail:
+          'line ' + (i + 1) + ' is indented with a tab character' +
+          (indent.indexOf(' ') !== -1 ? ', among other whitespace' : ''),
+      });
+    }
+  }
+
+  // --- the levelled copy
+  //
+  // The rules are applied in a fixed order, and each one is applied to
+  // the result of the last. The order matters: the line endings are
+  // normalised first, because everything else is defined in terms of
+  // lines, and the byte order mark is already gone by now.
+  let out = text;
+  if (crlfLine !== 0 || crLine !== 0) {
+    out = out.replace(/\r\n/g, '\n').replace(/\r(?!\n)/g, '\n');
+  }
+  out = out.replace(/[ \t]+$/gm, '');
+  out = out.replace(/^[ \t]+/gm, (indent) => expandIndent(indent));
+  if (out.length > 0 && !out.endsWith('\n')) {
+    out += '\n';
+  }
+
+  // The levelled copy has no byte order mark: that is one of the
+  // things levelling removes, so the copy is simply the text, encoded.
+  const levelled = encodeUtf8(out);
+
+  // A file that was already fine is not rewritten: the levelled copy
+  // is byte-identical to the original.
+  const changed = !sameBytes(buf, levelled);
+
+  // --- the line by line difference
+  //
+  // Levelling never adds or removes a line: it only changes what is
+  // inside one and terminates the last one. So the two lists of lines
+  // are the same length and can be compared side by side.
+  const before = realLines(text);
+  const after = realLines(out);
+  const diff = [];
+  for (let i = 0; i < Math.max(before.length, after.length); i++) {
+    const b = before[i] === undefined ? '' : before[i];
+    const a = after[i] === undefined ? '' : after[i];
+    diff.push({ line: i + 1, before: b, after: a, changed: b !== a });
+  }
+
+  return {
+    ok: findings.length === 0,
+    findings: findings,
+    notes: notes,
+    levelled: levelled,
+    changed: changed,
+    text: text,
+    diff: diff,
+    size: buf.length,
+    levelledSize: levelled.length,
+    hadBom: hasBom,
+    hadFinalNewline: endsWithNewline,
+  };
+}
+
+/* END engine (from tools/level/level.js) */
+
+/* BEGIN interface */
+(function () {
+  "use strict";
+
+  const $ = (id) => document.getElementById(id);
+  const state = { name: "", bytes: null, result: null };
+
+  // Make the invisible visible: a trailing space becomes a middle dot, a
+  // tab becomes an arrow, a carriage return becomes a pilcrow. This is
+  // the whole point of the tool, so the page must show it.
+  function showWhitespace(s) {
+    return String(s)
+      .replace(/\r/g, "<span class=\"ws\">\\r</span>")
+      .replace(/\t/g, "<span class=\"ws\">\\t</span>")
+      .replace(/ /g, "<span class=\"ws\">·</span>");
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  // The text of a line, with its invisible characters shown but escaped.
+  function lineHtml(s) {
+    return showWhitespace(escapeHtml(s));
+  }
+
+  function readBytes(file) {
+    if (file.arrayBuffer) return file.arrayBuffer();
+    return new Promise(function (resolve, reject) {
+      const r = new FileReader();
+      r.onload = function () { resolve(r.result); };
+      r.onerror = function () { reject(r.error); };
+      r.readAsArrayBuffer(file);
+    });
+  }
+
+  function wireDrop(zoneId, inputId, onFile) {
+    const zone = $(zoneId);
+    const input = $(inputId);
+    zone.addEventListener("dragover", function (e) {
+      e.preventDefault();
+      zone.classList.add("hot");
+    });
+    zone.addEventListener("dragleave", function () {
+      zone.classList.remove("hot");
+    });
+    zone.addEventListener("drop", function (e) {
+      e.preventDefault();
+      zone.classList.remove("hot");
+      const files = e.dataTransfer && e.dataTransfer.files;
+      if (files && files.length) onFile(files[0]);
+    });
+    input.addEventListener("change", function () {
+      if (input.files && input.files.length) onFile(input.files[0]);
+    });
+  }
+
+  function ruleTitle(id) {
+    for (const r of RULES) if (r.id === id) return r.title;
+    return id;
+  }
+
+  function renderFindings(res) {
+    const ul = $("findings");
+    ul.innerHTML = "";
+    if (!res.findings.length) {
+      const li = document.createElement("li");
+      li.className = "meta";
+      li.textContent = "nothing to report";
+      ul.appendChild(li);
+      return;
+    }
+    res.findings.forEach(function (f) {
+      const li = document.createElement("li");
+      li.className = "finding";
+      const where = document.createElement("span");
+      where.className = "where";
+      where.textContent = f.line === null ? "-" : "line " + f.line;
+      const what = document.createElement("span");
+      what.className = "what";
+      what.textContent = f.rule;
+      const why = document.createElement("span");
+      why.className = "why";
+      why.textContent = f.detail;
+      li.appendChild(where);
+      li.appendChild(what);
+      li.appendChild(why);
+      ul.appendChild(li);
+    });
+  }
+
+  function renderDiff(res) {
+    const table = $("diff");
+    table.innerHTML = "";
+    const diff = res.diff || [];
+    let shown = 0;
+    diff.forEach(function (d) {
+      if (!d.changed) return;
+      shown++;
+      const trDel = document.createElement("tr");
+      trDel.className = "del";
+      const n1 = document.createElement("td");
+      n1.className = "n";
+      n1.textContent = d.line;
+      const m1 = document.createElement("td");
+      m1.className = "mark";
+      m1.textContent = "-";
+      const t1 = document.createElement("td");
+      t1.className = "text";
+      t1.innerHTML = lineHtml(d.before);
+      trDel.appendChild(n1);
+      trDel.appendChild(m1);
+      trDel.appendChild(t1);
+      table.appendChild(trDel);
+
+      const trAdd = document.createElement("tr");
+      trAdd.className = "add";
+      const n2 = document.createElement("td");
+      n2.className = "n";
+      n2.textContent = d.line;
+      const m2 = document.createElement("td");
+      m2.className = "mark";
+      m2.textContent = "+";
+      const t2 = document.createElement("td");
+      t2.className = "text";
+      t2.innerHTML = lineHtml(d.after);
+      trAdd.appendChild(n2);
+      trAdd.appendChild(m2);
+      trAdd.appendChild(t2);
+      table.appendChild(trAdd);
+    });
+    if (shown === 0) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.className = "text";
+      td.colSpan = 3;
+      td.textContent = "no line would change";
+      tr.appendChild(td);
+      table.appendChild(tr);
+    }
+    return shown;
+  }
+
+  function show() {
+    const res = state.result;
+    $("result").classList.remove("hide");
+    $("verdict").innerHTML = res.ok
+      ? '<span class="tag t-ok">levelled</span> The file is already the shape it should be.'
+      : '<span class="tag t-bad">' + res.findings.length + ' finding' +
+        (res.findings.length === 1 ? '' : 's') + '</span> ' +
+        'The file is not the shape it should be.';
+    $("which").textContent =
+      state.name + "  -  " + res.size + " bytes" +
+      (res.levelledSize !== null && res.levelledSize !== res.size
+        ? "  -  levelled would be " + res.levelledSize + " bytes"
+        : "");
+    renderFindings(res);
+    const shown = renderDiff(res);
+    $("diff-note").textContent = res.changed
+      ? "These " + shown + " line" + (shown === 1 ? "" : "s") +
+        " would change. Nothing has been changed yet."
+      : "Nothing would change.";
+    $("save").disabled = !res.changed || res.levelled === null;
+    $("copy").disabled = res.levelled === null;
+  }
+
+  function handleBytes(name, bytes) {
+    state.name = name;
+    state.bytes = bytes;
+    state.result = check(bytes);
+    show();
+  }
+
+  function handleFile(file) {
+    readBytes(file).then(function (buf) {
+      handleBytes(file.name, new Uint8Array(buf));
+    }).catch(function (e) {
+      $("result").classList.remove("hide");
+      $("verdict").innerHTML = '<span class="tag t-bad">cannot read</span> ' +
+        escapeHtml(e && e.message ? e.message : String(e));
+    });
+  }
+
+  wireDrop("zone-file", "file-input", handleFile);
+
+  $("check-text").addEventListener("click", function () {
+    const text = $("text-input").value;
+    handleBytes("(pasted text)", encodeUtf8(text));
+  });
+
+  $("save").addEventListener("click", function () {
+    const res = state.result;
+    if (!res || res.levelled === null) return;
+    // The levelled copy is offered under a new name, so that saving it
+    // cannot overwrite the file the reader gave us.
+    const base = state.name.replace(/\.[^.]*$/, "");
+    const ext = state.name.match(/\.([^.]*)$/);
+    const name = base + ".levelled" + (ext ? "." + ext[1] : ".txt");
+    const blob = new Blob([res.levelled], { type: "text/plain" });
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = href;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(href); }, 5000);
+    $("saved").textContent =
+      "Your browser was asked to save " + name + ". Your original file was " +
+      "not touched.";
+  });
+
+  $("copy").addEventListener("click", function () {
+    const res = state.result;
+    if (!res || res.levelled === null) return;
+    const text = decodeUtf8(res.levelled).text;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () {
+        $("saved").textContent = "The levelled text is on the clipboard.";
+      }, function () {
+        $("saved").textContent = "The browser would not copy it for you.";
+      });
+    } else {
+      $("saved").textContent = "The browser would not copy it for you.";
+    }
+  });
+
+  // ------------------------------------------------------------ the self test
+  //
+  // Open this page with ?selftest=1 to run the published test vectors
+  // against the engine in this page. It is the same set of vectors the
+  // command line test suite uses, so a stranger can check the page
+  // works in their own browser.
+  const SELFTEST = [
+    {
+      name: "a clean file has no findings",
+      bytes: function () { return encodeUtf8("one\ntwo\n"); },
+      expect: function (r) { return r.ok === true && r.findings.length === 0; }
+    },
+    {
+      name: "a byte order mark is found",
+      bytes: function () {
+        return Uint8Array.from([0xef, 0xbb, 0xbf].concat(Array.from(encodeUtf8("hi\n"))));
+      },
+      expect: function (r) { return r.findings.length === 1 && r.findings[0].rule === "bom"; }
+    },
+    {
+      name: "CRLF is found and normalised",
+      bytes: function () { return encodeUtf8("one\r\ntwo\r\n"); },
+      expect: function (r) {
+        return r.findings[0].rule === "crlf" &&
+          decodeUtf8(r.levelled).text === "one\ntwo\n";
+      }
+    },
+    {
+      name: "a bare CR is found and normalised",
+      bytes: function () { return encodeUtf8("one\rtwo\r"); },
+      expect: function (r) {
+        return r.findings[0].rule === "crlf" &&
+          decodeUtf8(r.levelled).text === "one\ntwo\n";
+      }
+    },
+    {
+      name: "invalid UTF-8 is found and not levelled",
+      bytes: function () { return Uint8Array.from([0x68, 0x69, 0xff, 0x0a]); },
+      expect: function (r) {
+        return r.findings.length === 1 && r.findings[0].rule === "encoding" &&
+          r.levelled === null;
+      }
+    },
+    {
+      name: "a missing final newline is found",
+      bytes: function () { return encodeUtf8("one\ntwo"); },
+      expect: function (r) {
+        return r.findings.length === 1 && r.findings[0].rule === "final-newline";
+      }
+    },
+    {
+      name: "trailing spaces are found and stripped",
+      bytes: function () { return encodeUtf8("one   \ntwo\n"); },
+      expect: function (r) {
+        return r.findings[0].rule === "trailing-space" &&
+          decodeUtf8(r.levelled).text === "one\ntwo\n";
+      }
+    },
+    {
+      name: "tab indentation is found and expanded",
+      bytes: function () { return encodeUtf8("\tone\n"); },
+      expect: function (r) {
+        return r.findings[0].rule === "tabs" &&
+          decodeUtf8(r.levelled).text === "    one\n";
+      }
+    },
+    {
+      name: "the UTF-8 codec round trips",
+      bytes: function () { return encodeUtf8("café 中文 😀"); },
+      expect: function (r) {
+        return decodeUtf8(r.bytes).text === "café 中文 😀" && r.ok === true;
+      }
+    },
+    {
+      name: "levelling a levelled file changes nothing",
+      bytes: function () { return encodeUtf8("\tone  \r\ntwo\r\nthree"); },
+      expect: function (r) {
+        const again = check(r.levelled);
+        return again.ok === true && again.changed === false;
+      }
+    }
+  ];
+
+  function runSelfTest() {
+    const rows = [];
+    let allOk = true;
+    SELFTEST.forEach(function (v) {
+      let ok = false;
+      let note = "";
+      try {
+        const r = check(v.bytes());
+        ok = v.expect(r) === true;
+        if (!ok) note = "the engine did not do what the vector says";
+      } catch (e) {
+        ok = false;
+        note = e && e.message ? e.message : String(e);
+      }
+      if (!ok) allOk = false;
+      rows.push({ name: v.name, ok: ok, note: note });
+    });
+    return { rows: rows, allOk: allOk };
+  }
+
+  if (/[?&]selftest=1/.test(window.location.search)) {
+    document.title = "level - self test";
+    const out = runSelfTest();
+    const lines = [];
+    lines.push("level self test");
+    lines.push("");
+    out.rows.forEach(function (r) {
+      lines.push((r.ok ? "PASS" : "FAIL") + "  " + r.name);
+      if (!r.ok && r.note) lines.push("      " + r.note);
+    });
+    lines.push("");
+    lines.push(out.allOk
+      ? "All vectors passed. The engine in this page behaves as it should."
+      : "A vector FAILED. This build is not fit to use.");
+    const pre = document.createElement("pre");
+    pre.textContent = lines.join("\n");
+    document.body.insertBefore(pre, document.body.firstChild);
+  } else {
+    $("result").classList.add("hide");
+  }
+})();
+/* END interface */
+</script>
+</body>
+</html>
