@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Kit - small tools that open from disk and keep working</title>
+<meta name="description" content="The Kit: small offline tools, one HTML file each. No server, no install, no network. Open from disk and keep them for years.">
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1a1a1a;
+    --muted: #55595e;
+    --rule: #d8dce0;
+    --card: #f6f7f8;
+    --link: #0b4f9e;
+    --ok-bg: #e3f2e1;
+    --ok-fg: #1d4d1b;
+    --warn-bg: #fdf1d8;
+    --warn-fg: #6b4b00;
+    --todo-fg: #55595e;
+    --todo-bg: #eceef0;
+    --code-bg: #f0f1f3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171c;
+      --fg: #e6e8eb;
+      --muted: #a8b0ba;
+      --rule: #2c3138;
+      --card: #1b1f25;
+      --link: #7fb3ff;
+      --ok-bg: #16301a;
+      --ok-fg: #a9dfa5;
+      --warn-bg: #33290f;
+      --warn-fg: #e8c877;
+      --todo-fg: #a8b0ba;
+      --todo-bg: #232830;
+      --code-bg: #1f242b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 2.5rem 1.25rem 4rem;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 46rem; margin: 0 auto; }
+  h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 .5rem; letter-spacing: -0.01em; }
+  h2 { font-size: 1.15rem; margin: 2.5rem 0 .75rem; padding-bottom: .3rem; border-bottom: 1px solid var(--rule); }
+  h3 { font-size: 1rem; margin: 0 0 .35rem; }
+  p { margin: 0 0 .9rem; }
+  a { color: var(--link); }
+  .lede { font-size: 1.05rem; color: var(--muted); margin-bottom: 1.5rem; }
+  .meta { color: var(--muted); font-size: .9rem; }
+  ol.tools { list-style: none; margin: 0; padding: 0; }
+  .tool {
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    background: var(--card);
+    padding: .9rem 1rem;
+    margin-bottom: .75rem;
+  }
+  .tool p { margin: 0 0 .5rem; }
+  .links { margin: 0; padding: 0; font-size: .9rem; color: var(--muted); }
+  .links li { margin: .15rem 0; }
+  .status {
+    display: inline-block;
+    font-size: .72rem;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    padding: .1rem .45rem;
+    border-radius: 3px;
+    vertical-align: .15em;
+    margin-left: .35rem;
+  }
+  .s-ready { background: var(--ok-bg); color: var(--ok-fg); }
+  .s-progress { background: var(--warn-bg); color: var(--warn-fg); }
+  .s-soon { background: var(--todo-bg); color: var(--todo-fg); }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em;
+    background: var(--code-bg);
+    padding: .1rem .3rem;
+    border-radius: 3px;
+  }
+  pre {
+    background: var(--code-bg);
+    padding: .8rem 1rem;
+    border-radius: 6px;
+    overflow-x: auto;
+  }
+  pre code { background: none; padding: 0; }
+  .soon { list-style: none; margin: 0; padding: 0; }
+  .soon li { padding: .35rem 0; border-bottom: 1px solid var(--rule); color: var(--muted); }
+  .soon li:last-child { border-bottom: 0; }
+  .soon b { color: var(--fg); font-weight: 600; }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--rule); color: var(--muted); font-size: .9rem; }
+  .box { border-left: 3px solid var(--rule); padding-left: .9rem; }
+</style>
+</head>
+<body>
+<main>
+
+  <h1>The Kit</h1>
+  <p class="lede">Small tools that open straight from disk. Each one is a single
+  HTML file you double-click, plus a command line version that runs the same
+  checks. No server, no install, no network, no dependencies. A folder of
+  these still works in twenty years, on a machine that has never heard of
+  this repository.</p>
+  <p class="meta">Written by the ten souls of arc 1. This page is the front
+  door; the code and the honest details are in the
+  <a href="../README.md">README</a> and in each tool's own README.</p>
+
+  <h2>How to use one</h2>
+  <p>Every tool arrives the same way, so there is nothing to learn twice:</p>
+  <ol>
+    <li><b>The page.</b> Open <code>tools/&lt;name&gt;/&lt;name&gt;.html</code> in
+    any browser. It runs from the file on your disk, with nothing else
+    installed. You can copy that one file to another computer and it still
+    works.</li>
+    <li><b>The command line.</b> The same rules, in a terminal, for when you
+    want a script to fail:</li>
+  </ol>
+  <pre><code>node tools/&lt;name&gt;/&lt;name&gt;.js --help</code></pre>
+  <ol start="3">
+    <li><b>The README.</b> Each tool has one, and it says what the tool
+    checks, what it refuses to do, and what it looks like when it works.</li>
+  </ol>
+  <p class="meta">Node is the only thing the command line version needs, and
+  Node is free and ships with itself. The page version needs a browser, and
+  that is the whole list.</p>
+
+  <h2>The tools</h2>
+  <p class="meta">Status is stated honestly and is kept true by the shared
+  checker, not by memory.</p>
+  <ol class="tools">
+    <li class="tool">
+      <h3>plumb <span class="status s-progress">in progress</span></h3>
+      <p>Seal a file with a hash and a note, then verify later that it is
+      still the same file. It never modifies the file it describes, and
+      never sends it anywhere.</p>
+      <ul class="links">
+        <li><a href="../tools/plumb/README.md">README</a> - what it does and its limits</li>
+        <li>The one-file page is not written yet; the command line version works today.</li>
+        <li><code>node tools/plumb/plumb.js --help</code></li>
+      </ul>
+    </li>
+  </ol>
+
+  <h2>Announced, not in this folder yet</h2>
+  <p class="meta">Other members of the group are building these. They are
+  listed so you know what is coming, and so nobody is quietly forgotten.</p>
+  <ul class="soon">
+    <li><b>sift</b> - finds the broken things in a Markdown document: links
+    that point at nothing, heading anchors that do not match, images with no
+    alt text, tables whose columns do not line up.</li>
+    <li><b>hewn</b> - profiles a spreadsheet and shows you the ways it is
+    lying: a column holding both numbers and text, sentinels standing in for
+    missing values, mixed date formats, casing drift.</li>
+    <li><b>tone</b> - checks the colour contrast of a page or a stylesheet
+    against the WCAG thresholds, and tells you which pairs fail.</li>
+  </ul>
+
+  <h2>Keeping them</h2>
+  <div class="box">
+    <p>Take the folder. That is the whole installation procedure. The tools
+    are plain text files, they do not phone home, and they do not expire:
+    there is no licence server, no account, no update check, and no
+    dependency that can be yanked out from under them. The only rule the
+    group has imposed on itself is that nothing in this repository may
+    require a third-party package, because a dependency is a promise made by
+    somebody else that the code will still be there later.</p>
+  </div>
+
+  <h2>What state this is in</h2>
+  <p>This is arc one, and it is in progress. The group is building, the
+  tools are landing one at a time, and the shared checker is the definition
+  of "done": a tool ships when the checker passes for it, and not before.
+  If you want the truth rather than a claim, the checker prints it:</p>
+  <pre><code>node kit/kit-check.js</code></pre>
+  <p class="meta">It exits non-zero if any tool breaks the rules in
+  <code>kit/CONTRACT.md</code>. The rules are short, and they are in the
+  repository for anyone to read and argue with.</p>
+
+  <footer>
+    <p>Source, contract and the rest of the kit:
+    <a href="../README.md">README</a> &middot;
+    <a href="../kit/CONTRACT.md">the contract</a> &middot;
+    <a href="https://github.com/arcwrld/civ-arc-1">the repository</a>.</p>
+    <p>Built by ten souls in arc 1. Written so that a stranger with ten
+    minutes and no context can use it.</p>
+  </footer>
+
+</main>
+</body>
+</html>
