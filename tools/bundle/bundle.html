@@ -1,0 +1,769 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bundle</title>
+<meta name="description" content="bundle - a folder of files packed into one HTML file you can open from disk, read, and unpack again. No server, no install, no network.">
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1a1a1a;
+    --muted: #55595e;
+    --rule: #d8dce0;
+    --card: #f6f7f8;
+    --link: #0b4f9e;
+    --ok-bg: #e3f2e1;
+    --ok-fg: #1d4d1b;
+    --warn-bg: #fdf1d8;
+    --warn-fg: #6b4b00;
+    --bad-bg: #fbe3e3;
+    --bad-fg: #7a1d1d;
+    --code-bg: #f0f1f3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171c;
+      --fg: #e6e8eb;
+      --muted: #a8b0ba;
+      --rule: #2c3138;
+      --card: #1b1f25;
+      --link: #7fb3ff;
+      --ok-bg: #16301a;
+      --ok-fg: #a9dfa5;
+      --warn-bg: #33290f;
+      --warn-fg: #e8c877;
+      --bad-bg: #3a1a1a;
+      --bad-fg: #f0a9a9;
+      --code-bg: #1f242b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 2rem 1rem 4rem;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 64rem; margin: 0 auto; }
+  h1 { font-size: 1.5rem; line-height: 1.25; margin: 0 0 .3rem; }
+  h2 { font-size: 1.05rem; margin: 0 0 .5rem; }
+  p { margin: 0 0 .8rem; }
+  a { color: var(--link); }
+  .lede { color: var(--muted); max-width: 46rem; }
+  .meta { color: var(--muted); font-size: .9rem; }
+  .card {
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    background: var(--card);
+    padding: 1rem 1.1rem;
+    margin: 1.25rem 0;
+  }
+  .split { display: flex; gap: 1.25rem; align-items: flex-start; }
+  .split > .left { flex: 0 0 22rem; max-width: 22rem; }
+  .split > .right { flex: 1 1 auto; min-width: 0; }
+  @media (max-width: 46rem) {
+    .split { flex-direction: column; }
+    .split > .left { flex: 1 1 auto; max-width: none; width: 100%; }
+  }
+  .bar { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin-bottom: .75rem; }
+  input[type="search"], input[type="text"] {
+    font: inherit;
+    padding: .35rem .5rem;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: var(--bg);
+    color: var(--fg);
+    min-width: 8rem;
+  }
+  input[type="search"] { flex: 1 1 12rem; }
+  button {
+    font: inherit;
+    font-size: .9rem;
+    padding: .35rem .7rem;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: var(--bg);
+    color: var(--fg);
+    cursor: pointer;
+  }
+  button:hover { background: var(--code-bg); }
+  button[disabled] { opacity: .5; cursor: default; }
+  ul.files { list-style: none; margin: 0; padding: 0; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; max-height: 70vh; overflow-y: auto; }
+  ul.files li { border-bottom: 1px solid var(--rule); }
+  ul.files li:last-child { border-bottom: 0; }
+  ul.files button {
+    display: flex;
+    width: 100%;
+    gap: .75rem;
+    justify-content: space-between;
+    align-items: baseline;
+    text-align: left;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    padding: .4rem .7rem;
+    font-size: .92rem;
+  }
+  ul.files button:hover { background: var(--code-bg); }
+  ul.files button[aria-current="true"] { background: var(--code-bg); font-weight: 600; }
+  .fname { overflow-wrap: anywhere; }
+  .fsize { color: var(--muted); font-size: .82rem; white-space: nowrap; }
+  .dirhead { padding: .5rem .7rem .2rem; font-size: .78rem; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+  pre.preview {
+    background: var(--code-bg);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: .8rem 1rem;
+    overflow: auto;
+    max-height: 70vh;
+    margin: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .86rem;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .pill { display: inline-block; font-size: .75rem; padding: .1rem .45rem; border-radius: 3px; letter-spacing: .03em; }
+  .pill-ok { background: var(--ok-bg); color: var(--ok-fg); }
+  .pill-bad { background: var(--bad-bg); color: var(--bad-fg); }
+  .pill-warn { background: var(--warn-bg); color: var(--warn-fg); }
+  .empty { color: var(--muted); }
+  dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: .15rem .9rem; margin: 0; }
+  dl.facts dt { color: var(--muted); font-size: .88rem; }
+  dl.facts dd { margin: 0; font-size: .88rem; }
+  footer { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--rule); color: var(--muted); font-size: .88rem; }
+  .row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<main>
+
+  <h1 id="title">bundle</h1>
+  <p class="lede" id="lede">A folder of files, packed into one HTML file. Open it from disk
+  and everything inside is there: read it, check it, take it out again. No server, no install,
+  no network, nothing to expire.</p>
+
+  <section id="reader">
+    <div class="card">
+      <h2 id="reader-head">This page is empty</h2>
+      <p id="reader-note">It is a reader with nothing inside it. Open a bundle file to read
+      one, or make a bundle from the command line:</p>
+      <pre><code>node tools/bundle/bundle.js pack &lt;folder&gt; -o archive.html</code></pre>
+      <p class="row">
+        <input type="file" id="open-file" accept=".html,.htm,text/html">
+        <span class="meta">or drop a bundle file anywhere on this page</span>
+      </p>
+    </div>
+  </section>
+
+  <section id="contents" hidden>
+    <div class="card">
+      <dl class="facts" id="facts"></dl>
+    </div>
+    <div class="bar">
+      <input type="search" id="filter" placeholder="filter by name" aria-label="filter by name">
+      <button id="dl-one" disabled>Download the selected file</button>
+      <button id="dl-all">Download all as .zip</button>
+      <button id="check">Check the archive</button>
+    </div>
+    <p class="meta" id="check-out" hidden></p>
+    <div class="split">
+      <div class="left">
+        <ul class="files" id="files"></ul>
+      </div>
+      <div class="right">
+        <div id="preview"><p class="empty">Pick a file on the left to read it here.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p>bundle keeps its own copies: this file contains everything it needs to show you
+    what is inside, and to give it back to you. Nothing here talks to a network.</p>
+  </footer>
+
+</main>
+
+<script type="application/json" id="bundle-payload">{"format":"kit.bundle/1","tool":"bundle/1.0.0","root":"","title":"","created":"","files":[],"empty":true}</script>
+
+<script id="bundle-core">
+/* BUNDLE-CORE-START */
+(function (root) {
+  'use strict';
+
+  // The rules of a bundle, in one place. The page and the command line both
+  // use this block, so the two cannot disagree about what a bundle is.
+
+  var FORMAT = 'kit.bundle/1';
+
+  // ----------------------------------------------------------------- sha256
+  var K = [
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+  ];
+
+  function rotr(x, n) { return ((x >>> n) | (x << (32 - n))) >>> 0; }
+
+  function sha256Hex(bytes) {
+    var H = new Uint32Array([
+      0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+    ]);
+    var len = bytes.length;
+    var bitLen = len * 8;
+    var total = ((len + 9 + 63) >> 6) << 6;
+    var buf = new Uint8Array(total);
+    buf.set(bytes);
+    buf[len] = 0x80;
+    var dv = new DataView(buf.buffer);
+    dv.setUint32(total - 8, Math.floor(bitLen / 0x100000000), false);
+    dv.setUint32(total - 4, bitLen >>> 0, false);
+
+    var w = new Uint32Array(64);
+    var i, b, a, bb, c, d, e, f, g, h, s0, s1, t1, t2;
+
+    for (b = 0; b < total; b += 64) {
+      for (i = 0; i < 16; i++) w[i] = dv.getUint32(b + i * 4, false);
+      for (i = 16; i < 64; i++) {
+        s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ (w[i - 15] >>> 3);
+        s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ (w[i - 2] >>> 10);
+        w[i] = (w[i - 16] + s0 + w[i - 7] + s1) >>> 0;
+      }
+      a = H[0]; bb = H[1]; c = H[2]; d = H[3]; e = H[4]; f = H[5]; g = H[6]; h = H[7];
+      for (i = 0; i < 64; i++) {
+        s1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+        t1 = (h + s1 + ((e & f) ^ (~e & g)) + K[i] + w[i]) >>> 0;
+        s0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+        t2 = (s0 + ((a & bb) ^ (a & c) ^ (bb & c))) >>> 0;
+        h = g; g = f; f = e; e = (d + t1) >>> 0; d = c; c = bb; bb = a; a = (t1 + t2) >>> 0;
+      }
+      H[0] = (H[0] + a) >>> 0; H[1] = (H[1] + bb) >>> 0; H[2] = (H[2] + c) >>> 0; H[3] = (H[3] + d) >>> 0;
+      H[4] = (H[4] + e) >>> 0; H[5] = (H[5] + f) >>> 0; H[6] = (H[6] + g) >>> 0; H[7] = (H[7] + h) >>> 0;
+    }
+
+    var out = '';
+    for (i = 0; i < 8; i++) out += ('00000000' + H[i].toString(16)).slice(-8);
+    return out;
+  }
+
+  // ----------------------------------------------------------------- base64
+  var B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+  function bytesToBase64(bytes) {
+    var out = '', i, n;
+    for (i = 0; i + 2 < bytes.length; i += 3) {
+      n = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
+      out += B64[(n >> 18) & 63] + B64[(n >> 12) & 63] + B64[(n >> 6) & 63] + B64[n & 63];
+    }
+    var rem = bytes.length - i;
+    if (rem === 1) {
+      n = bytes[i] << 16;
+      out += B64[(n >> 18) & 63] + B64[(n >> 12) & 63] + '==';
+    } else if (rem === 2) {
+      n = (bytes[i] << 16) | (bytes[i + 1] << 8);
+      out += B64[(n >> 18) & 63] + B64[(n >> 12) & 63] + B64[(n >> 6) & 63] + '=';
+    }
+    return out;
+  }
+
+  function base64ToBytes(s) {
+    s = String(s).replace(/[^A-Za-z0-9+/]/g, '');
+    var out = [], i, n;
+    for (i = 0; i + 3 < s.length; i += 4) {
+      n = (B64.indexOf(s[i]) << 18) | (B64.indexOf(s[i + 1]) << 12) |
+          (B64.indexOf(s[i + 2]) << 6) | B64.indexOf(s[i + 3]);
+      out.push((n >> 16) & 255, (n >> 8) & 255, n & 255);
+    }
+    var rem = s.length - i;
+    if (rem === 2) {
+      n = (B64.indexOf(s[i]) << 18) | (B64.indexOf(s[i + 1]) << 12);
+      out.push((n >> 16) & 255);
+    } else if (rem === 3) {
+      n = (B64.indexOf(s[i]) << 18) | (B64.indexOf(s[i + 1]) << 12) | (B64.indexOf(s[i + 2]) << 6);
+      out.push((n >> 16) & 255, (n >> 8) & 255);
+    }
+    return new Uint8Array(out);
+  }
+
+  // -------------------------------------------------------------------- crc32
+  var CRCTABLE = null;
+  function crcTable() {
+    if (CRCTABLE) return CRCTABLE;
+    var t = new Uint32Array(256), c, n, k;
+    for (n = 0; n < 256; n++) {
+      c = n;
+      for (k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      t[n] = c >>> 0;
+    }
+    CRCTABLE = t;
+    return t;
+  }
+
+  function crc32(bytes) {
+    var t = crcTable(), crc = 0xFFFFFFFF, i, c;
+    for (i = 0; i < bytes.length; i++) {
+      c = (crc ^ bytes[i]) & 0xFF;
+      crc = (crc >>> 8) ^ t[c];
+    }
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  // ---------------------------------------------------------------------- zip
+  // A .zip with everything stored and nothing compressed. Any unzip tool
+  // reads it, and it needs no library to write.
+  function buildZip(files, when) {
+    var enc = new TextEncoder();
+    var d = when || new Date();
+    var dosTime = ((d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1)) & 0xFFFF;
+    var dosDate = (((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate()) & 0xFFFF;
+
+    var parts = [], central = [], offset = 0, i, j;
+
+    for (i = 0; i < files.length; i++) {
+      var nameBytes = enc.encode(files[i].name);
+      var data = files[i].bytes;
+      var crc = crc32(data);
+      var size = data.length;
+
+      var local = new Uint8Array(30 + nameBytes.length);
+      var lv = new DataView(local.buffer);
+      lv.setUint32(0, 0x04034b50, true);
+      lv.setUint16(4, 20, true);
+      lv.setUint16(6, 0x0800, true);
+      lv.setUint16(8, 0, true);
+      lv.setUint16(10, dosTime, true);
+      lv.setUint16(12, dosDate, true);
+      lv.setUint32(14, crc, true);
+      lv.setUint32(18, size, true);
+      lv.setUint32(22, size, true);
+      lv.setUint16(26, nameBytes.length, true);
+      lv.setUint16(28, 0, true);
+      local.set(nameBytes, 30);
+
+      var cd = new Uint8Array(46 + nameBytes.length);
+      var cv = new DataView(cd.buffer);
+      cv.setUint32(0, 0x02014b50, true);
+      cv.setUint16(4, 20, true);
+      cv.setUint16(6, 20, true);
+      cv.setUint16(8, 0x0800, true);
+      cv.setUint16(10, 0, true);
+      cv.setUint16(12, dosTime, true);
+      cv.setUint16(14, dosDate, true);
+      cv.setUint32(16, crc, true);
+      cv.setUint32(20, size, true);
+      cv.setUint32(24, size, true);
+      cv.setUint16(28, nameBytes.length, true);
+      cv.setUint16(30, 0, true);
+      cv.setUint16(32, 0, true);
+      cv.setUint16(34, 0, true);
+      cv.setUint16(36, 0, true);
+      cv.setUint32(38, 0, true);
+      cv.setUint32(42, offset, true);
+      cd.set(nameBytes, 46);
+
+      parts.push(local, data);
+      central.push(cd);
+      offset += local.length + size;
+    }
+
+    var cdSize = 0;
+    for (j = 0; j < central.length; j++) cdSize += central[j].length;
+
+    var eocd = new Uint8Array(22);
+    var ev = new DataView(eocd.buffer);
+    ev.setUint32(0, 0x06054b50, true);
+    ev.setUint16(4, 0, true);
+    ev.setUint16(6, 0, true);
+    ev.setUint16(8, central.length, true);
+    ev.setUint16(10, central.length, true);
+    ev.setUint32(12, cdSize, true);
+    ev.setUint32(16, offset, true);
+    ev.setUint16(20, 0, true);
+
+    var all = parts.concat(central, [eocd]);
+    var total = 0;
+    for (j = 0; j < all.length; j++) total += all[j].length;
+    var out = new Uint8Array(total);
+    var p = 0;
+    for (j = 0; j < all.length; j++) { out.set(all[j], p); p += all[j].length; }
+    return out;
+  }
+
+  // -------------------------------------------------------------------- paths
+  // A path may only go down. Anything that could climb out of the folder it
+  // belongs in is refused.
+  function safePath(p) {
+    if (typeof p !== 'string' || p === '') return null;
+    var s = p.replace(/\\/g, '/');
+    if (s.charAt(0) === '/') return null;
+    if (/^[A-Za-z]:/.test(s)) return null;
+    if (/[ -]/.test(s)) return null;
+    var parts = [], segs = s.split('/'), i, seg;
+    for (i = 0; i < segs.length; i++) {
+      seg = segs[i];
+      if (seg === '' || seg === '.') continue;
+      if (seg === '..') return null;
+      parts.push(seg);
+    }
+    if (!parts.length) return null;
+    return parts.join('/');
+  }
+
+  // --------------------------------------------------------------------- text
+  function isTextBytes(bytes) {
+    var i;
+    if (!bytes.length) return true;
+    for (i = 0; i < bytes.length; i++) if (bytes[i] === 0) return false;
+    try {
+      new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    } catch (e) {
+      return false;
+    }
+    return true;
+  }
+
+  function textToBytes(s) {
+    return new TextEncoder().encode(s == null ? '' : String(s));
+  }
+
+  function bytesToText(bytes) {
+    return new TextDecoder('utf-8').decode(bytes);
+  }
+
+  function decodeEntry(entry) {
+    if (!entry) return new Uint8Array(0);
+    if (entry.encoding === 'base64') return base64ToBytes(entry.content || '');
+    return textToBytes(entry.content == null ? '' : entry.content);
+  }
+
+  function encodeEntry(bytes) {
+    if (isTextBytes(bytes)) {
+      return { encoding: 'utf8', content: bytesToText(bytes) };
+    }
+    return { encoding: 'base64', content: bytesToBase64(bytes) };
+  }
+
+  // ------------------------------------------------------------------ payload
+  function payloadFromHtml(html) {
+    var m = /<script type="application\/json" id="bundle-payload">([\s\S]*?)<\/script>/.exec(String(html));
+    if (!m) return null;
+    try {
+      return JSON.parse(m[1]);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function validatePayload(p) {
+    var errors = [];
+    if (!p || typeof p !== 'object' || Array.isArray(p)) {
+      return { ok: false, errors: ['the payload is not an object'] };
+    }
+    if (p.format !== FORMAT) {
+      errors.push('format is "' + p.format + '", expected "' + FORMAT + '"');
+    }
+    if (!Array.isArray(p.files)) {
+      errors.push('"files" is not an array');
+    } else {
+      p.files.forEach(function (f, i) {
+        if (!f || typeof f !== 'object') {
+          errors.push('file ' + i + ' is not an object');
+          return;
+        }
+        if (!safePath(f.path)) {
+          errors.push('file ' + i + ' has an unusable path: "' + f.path + '"');
+        }
+        if (typeof f.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(f.sha256)) {
+          errors.push('file ' + i + ' has no usable sha256');
+        }
+        if (f.encoding !== 'utf8' && f.encoding !== 'base64') {
+          errors.push('file ' + i + ' has an unknown encoding: "' + f.encoding + '"');
+        }
+      });
+    }
+    return { ok: errors.length === 0, errors: errors };
+  }
+
+  function totalSize(files) {
+    var n = 0, i;
+    for (i = 0; i < files.length; i++) {
+      if (files[i] && typeof files[i].size === 'number') n += files[i].size;
+    }
+    return n;
+  }
+
+  function formatSize(n) {
+    if (typeof n !== 'number' || !isFinite(n) || n < 0) return '?';
+    if (n < 1024) return n + ' B';
+    var units = ['KB', 'MB', 'GB', 'TB'], v = n / 1024, i = 0;
+    while (v >= 1024 && i < units.length - 1) { v = v / 1024; i++; }
+    return (v < 10 ? v.toFixed(1) : String(Math.round(v))) + ' ' + units[i];
+  }
+
+  // JSON that is safe to sit inside a <script> element: a "<" can never
+  // appear, so the payload can never close the tag it lives in.
+  function payloadToJson(p) {
+    return JSON.stringify(p)
+      .replace(/</g, '\\u003c')
+      .replace(/>/g, '\\u003e')
+      .replace(/&/g, '\\u0026');
+  }
+
+  root.BUNDLE_CORE = {
+    FORMAT: FORMAT,
+    sha256Hex: sha256Hex,
+    bytesToBase64: bytesToBase64,
+    base64ToBytes: base64ToBytes,
+    crc32: crc32,
+    buildZip: buildZip,
+    safePath: safePath,
+    isTextBytes: isTextBytes,
+    textToBytes: textToBytes,
+    bytesToText: bytesToText,
+    decodeEntry: decodeEntry,
+    encodeEntry: encodeEntry,
+    payloadFromHtml: payloadFromHtml,
+    payloadToJson: payloadToJson,
+    validatePayload: validatePayload,
+    totalSize: totalSize,
+    formatSize: formatSize
+  };
+})(typeof module !== 'undefined' && module.exports ? module.exports :
+   (typeof globalThis !== 'undefined' ? globalThis : this));
+/* BUNDLE-CORE-END */
+</script>
+
+<script id="bundle-viewer">
+(function () {
+  'use strict';
+
+  var CORE = (typeof globalThis !== 'undefined' ? globalThis : this).BUNDLE_CORE;
+
+  function $(id) { return document.getElementById(id); }
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined && text !== null) n.textContent = text;
+    return n;
+  }
+
+  var payload = null;
+  var selected = -1;
+  var shown = [];
+
+  function setFacts() {
+    var dl = $('facts');
+    dl.textContent = '';
+    var facts = [
+      ['name', payload.title || payload.root || 'bundle'],
+      ['format', payload.format],
+      ['made', payload.created || 'unknown'],
+      ['made by', payload.tool || 'unknown'],
+      ['files', String(payload.files.length)],
+      ['size', CORE.formatSize(CORE.totalSize(payload.files))]
+    ];
+    facts.forEach(function (pair) {
+      dl.appendChild(el('dt', null, pair[0]));
+      dl.appendChild(el('dd', null, pair[1]));
+    });
+  }
+
+  function matches(entry) {
+    var q = $('filter').value.trim().toLowerCase();
+    if (!q) return true;
+    return String(entry.path).toLowerCase().indexOf(q) !== -1;
+  }
+
+  function renderList() {
+    var ul = $('files');
+    ul.textContent = '';
+    shown = [];
+    payload.files.forEach(function (entry, i) {
+      if (!matches(entry)) return;
+      shown.push(i);
+      var li = el('li');
+      var b = el('button', null, null);
+      b.type = 'button';
+      b.setAttribute('aria-current', i === selected ? 'true' : 'false');
+      b.appendChild(el('span', 'fname', entry.path));
+      b.appendChild(el('span', 'fsize', CORE.formatSize(entry.size)));
+      b.addEventListener('click', function () { select(i); });
+      li.appendChild(b);
+      ul.appendChild(li);
+    });
+    if (!shown.length) {
+      var li = el('li');
+      li.appendChild(el('span', 'meta', 'no file matches that name'));
+      ul.appendChild(li);
+    }
+  }
+
+  function select(i) {
+    selected = i;
+    var entry = payload.files[i];
+    var box = $('preview');
+    box.textContent = '';
+    $('dl-one').disabled = false;
+    if (!entry) return;
+    var head = el('p', 'meta', entry.path + '  -  ' + CORE.formatSize(entry.size) +
+      (entry.encoding === 'base64' ? '  -  binary' : '  -  text'));
+    box.appendChild(head);
+    if (entry.encoding === 'base64') {
+      box.appendChild(el('p', 'empty', 'This file is not text. Use the button above to take it out.'));
+      return;
+    }
+    var pre = el('pre', 'preview', String(entry.content == null ? '' : entry.content));
+    box.appendChild(pre);
+    renderList();
+  }
+
+  function download(name, bytes, mime) {
+    var blob = new Blob([bytes], { type: mime || 'application/octet-stream' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+  }
+
+  function fileBytes(entry) {
+    return CORE.decodeEntry(entry);
+  }
+
+  function mimeFor(path) {
+    var p = String(path).toLowerCase();
+    if (/\.(txt|md|log|csv|tsv|json|jsonl|js|mjs|css|html?|xml|ya?ml|ini|cfg|conf|sh|py|rb|go|rs|c|h|sql|svg)$/.test(p)) {
+      return 'text/plain;charset=utf-8';
+    }
+    return 'application/octet-stream';
+  }
+
+  function showArchive(p) {
+    var check = CORE.validatePayload(p);
+    if (!check.ok) {
+      $('reader').hidden = false;
+      $('contents').hidden = true;
+      $('reader-head').textContent = 'That file is not a bundle';
+      $('reader-note').textContent = check.errors.join('. ');
+      return;
+    }
+    payload = p;
+    selected = -1;
+    $('reader').hidden = true;
+    $('contents').hidden = false;
+    $('title').textContent = p.title || p.root || 'bundle';
+    $('lede').textContent = 'A folder of ' + p.files.length + ' file' +
+      (p.files.length === 1 ? '' : 's') + ', packed into one file. Read anything here, take it out again, ' +
+      'and check that it is still what it was.';
+    setFacts();
+    renderList();
+    $('preview').textContent = '';
+    $('preview').appendChild(el('p', 'empty', 'Pick a file on the left to read it here.'));
+    $('dl-one').disabled = true;
+  }
+
+  function readFile(file) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      var p = CORE.payloadFromHtml(String(reader.result));
+      if (!p) {
+        $('reader-head').textContent = 'That file is not a bundle';
+        $('reader-note').textContent = 'No bundle payload was found inside it.';
+        return;
+      }
+      showArchive(p);
+    };
+    reader.onerror = function () {
+      $('reader-head').textContent = 'That file could not be read';
+      $('reader-note').textContent = 'The browser refused to read it.';
+    };
+    reader.readAsText(file);
+  }
+
+  function checkArchive() {
+    var out = $('check-out');
+    out.hidden = false;
+    out.textContent = 'Checking...';
+    var bad = [], i = 0;
+
+    function step() {
+      if (i >= payload.files.length) {
+        if (bad.length) {
+          out.textContent = '';
+          out.appendChild(el('span', 'pill pill-bad', bad.length + ' file' + (bad.length === 1 ? '' : 's') + ' do not match'));
+          out.appendChild(document.createTextNode(' ' + bad.join(', ')));
+        } else {
+          out.textContent = '';
+          out.appendChild(el('span', 'pill pill-ok', 'all ' + payload.files.length + ' files match'));
+          out.appendChild(document.createTextNode(' The archive is exactly what it was when it was packed.'));
+        }
+        return;
+      }
+      var entry = payload.files[i++];
+      var bytes = fileBytes(entry);
+      var digest = CORE.sha256Hex(bytes);
+      if (digest !== entry.sha256) bad.push(entry.path);
+      setTimeout(step, 0);
+    }
+    setTimeout(step, 0);
+  }
+
+  function downloadAll() {
+    var files = payload.files.map(function (entry) {
+      return { name: entry.path, bytes: fileBytes(entry) };
+    });
+    var zip = CORE.buildZip(files, new Date());
+    var name = (payload.root || payload.title || 'bundle').replace(/[^\w.-]+/g, '-');
+    download(name + '.zip', zip, 'application/zip');
+  }
+
+  function start() {
+    var input = $('open-file');
+    if (input) {
+      input.addEventListener('change', function () {
+        if (input.files && input.files[0]) readFile(input.files[0]);
+      });
+    }
+    $('filter').addEventListener('input', renderList);
+    $('dl-one').addEventListener('click', function () {
+      if (selected < 0) return;
+      var entry = payload.files[selected];
+      var parts = String(entry.path).split('/');
+      download(parts[parts.length - 1], fileBytes(entry), mimeFor(entry.path));
+    });
+    $('dl-all').addEventListener('click', downloadAll);
+    $('check').addEventListener('click', checkArchive);
+
+    document.addEventListener('dragover', function (e) { e.preventDefault(); });
+    document.addEventListener('drop', function (e) {
+      e.preventDefault();
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
+        readFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    var p = CORE.payloadFromHtml(document.getElementById('bundle-payload').textContent);
+    if (p && !p.empty) {
+      showArchive(p);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start);
+  } else {
+    start();
+  }
+})();
+</script>
+</body>
+</html>
